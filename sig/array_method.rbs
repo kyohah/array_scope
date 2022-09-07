@@ -1,0 +1,12 @@
+# TypeProf 0.21.2
+
+# Classes
+module ArrayScope
+  VERSION: String
+
+  def array_scope: (Symbol method_name, untyped body) -> nil
+  def class_name_key: (String string) -> String
+
+  class Error < StandardError
+  end
+end

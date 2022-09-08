@@ -3,9 +3,13 @@
 require_relative "array_scope/version"
 
 module ArrayScope
+  ARRAY_DEFINED_METHOD_NAMES = Array.methods
+
   class Error < StandardError; end
 
   def array_scope(method_name, body)
+    raise Error if ARRAY_DEFINED_METHOD_NAMES.include?(method_name)
+
     array_scope_method_name = -> (cn, mn) { "#{class_name_key(cn)}_#{mn}".to_sym }
 
     define_method_name = array_scope_method_name[self.name, method_name]

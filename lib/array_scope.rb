@@ -1,42 +1,107 @@
 # frozen_string_literal: true
 
 require_relative "array_scope/version"
+require_relative 'array_scope/configuration'
 
-module ArrayScope
-  ARRAY_DEFINED_METHOD_NAMES = Array.methods
-
+class ArrayScope
   class Error < StandardError; end
 
-  def array_scope(method_name, body)
-    raise Error if ARRAY_DEFINED_METHOD_NAMES.include?(method_name)
+  class << self
+    def configure
+      yield(configuration)
+    end
 
-    array_scope_method_name = -> (cn, mn) { "#{class_name_key(cn)}_#{mn}".to_sym }
-
-    define_method_name = array_scope_method_name[self.name, method_name]
-
-    Array.class_exec do
-      define_method(define_method_name, &body)
-
-      private define_method_name
-
-      define_method(method_name) do |*args|
-        raise NoMethodError, "undefined method `#{method_name}' for #{self.inspect}:Array" if size.zero?
-
-        classes = map { |obj| obj.class }.uniq
-        raise NoMethodError, "undefined method `#{method_name}' for #{self.inspect}:Array" unless classes.size == 1
-
-        send(array_scope_method_name[classes.first.name, method_name], *args)
-      end
+    def configuration
+      @configuration ||= Configuration.new
     end
   end
 
-  def class_name_key(string)
-    string
-      .gsub(/([A-Z]+)([A-Z][a-z])/, '\1_\2')
-      .gsub(/([a-z\d])([A-Z])/, '\1_\2')
-      .tr("::", "__")
-      .downcase
+  module Classes; end
+
+  attr_accessor :array
+
+  def initilize(objects)
+    array = objects
   end
 
-  private_methods :class_name_key
+  def method_missing
+    super if array.size.zero?
+
+    classes = array.map { |obj| obj.class }.uniq
+
+    super unless classes.size == 1
+
+    begin
+      klass = Object.const_get("ArrayScope::Classes::#{classes.first.name}")
+    rescue NameError
+      super
+    end
+
+    if klass.method_defined?(name)
+      klass.new.send(name, *args)
+    else
+      super
+    end
+  end
+
+  def array_scope(method_name, body)
+
+    begin
+      klass = Object.const_get("ArrayScope::Classes::#{self.name}")
+    rescue NameError
+      klass = ArrayScope::Classes.const_set self.name, Class.new
+    end
+
+    klass.class_exec do
+      define_method(method_name, &body)
+    end
+
+    if ArrayScope.configuration.define_method
+      Array.class_exec do
+        def method_missing(name, *args)
+          super if size.zero?
+
+          classes = map { |obj| obj.class }.uniq
+
+          super unless classes.size == 1
+
+          begin
+            klass = Object.const_get("ArrayScope::Classes::#{classes.first.name}")
+          rescue NameError
+            super
+          end
+
+          if klass.method_defined?(name)
+            klass.new.send(name, *args)
+          else
+            super
+          end
+        end
+      end
+    end
+
+    if ArrayScope.configuration.define_scope
+      Array.class_exec do
+        define_method(:scope) do |method_name, args = {}|
+          raise ArrayScope::Error if size.zero?
+
+          classes = map { |obj| obj.class }.uniq
+
+          raise ArrayScope::Error unless classes.size == 1
+
+          begin
+            klass = Object.const_get("ArrayScope::Classes::#{classes.first.name}")
+          rescue NameError
+            super
+          end
+
+          if klass.method_defined?(method_name)
+            klass.new.send(method_name, *args)
+          else
+            raise ArrayScope::Error
+          end
+        end
+      end
+    end
+  end
 end
